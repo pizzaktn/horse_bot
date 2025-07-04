@@ -23,7 +23,12 @@ namespace HorseBot.Services
         public GoogleSheetsService(IOptions<GoogleSheetsConfiguration> googleSheetsConfig)
         {
             _googleSheetsConfig = googleSheetsConfig;
-            var credential = GoogleCredential.FromFile("horsebot-461419-1c85be030892.json").CreateScoped(SheetsService.Scope.Spreadsheets);
+
+            string credsJson = Environment.GetEnvironmentVariable("GOOGLE_CREDENTIALS");
+            using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(credsJson));
+            GoogleCredential credential = GoogleCredential.FromStream(stream).CreateScoped(SheetsService.Scope.Spreadsheets);
+
+            //var credential = GoogleCredential.FromFile("horsebot-461419-1c85be030892.json").CreateScoped(SheetsService.Scope.Spreadsheets);
             //var credential = GoogleCredential.FromFile("credentials.json").CreateScoped(SheetsService.Scope.Spreadsheets);
             _sheetsService = new SheetsService(new BaseClientService.Initializer()
             {
@@ -31,7 +36,8 @@ namespace HorseBot.Services
                 ApplicationName = "HorseBot"
             });
 
-            _spreadsheetId = _googleSheetsConfig.Value.SpreadsheetId;
+            //_spreadsheetId = _googleSheetsConfig.Value.SpreadsheetId;
+            _spreadsheetId = Environment.GetEnvironmentVariable("SpreadsheetId");
         }
 
         public async Task AddStudentAsync(string name)

@@ -56,16 +56,13 @@ namespace HorseBot
             var builder = WebApplication.CreateBuilder(args);
 
             // Конфигурация
-            builder.Services.Configure<BotConfiguration>(builder.Configuration.GetSection("BotConfiguration"));
             builder.Services.Configure<GoogleSheetsConfiguration>(builder.Configuration.GetSection("GoogleSheetsConfiguration"));
-            builder.Services.AddSingleton(sp =>
-                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BotConfiguration>>().Value);
             builder.Services.AddSingleton<IUpdateHandler, UpdateHandler>();
 
             builder.Services.AddSingleton<ITelegramBotClient>(sp =>
-            {
-                var options = sp.GetRequiredService<BotConfiguration>();
-                return new TelegramBotClient(options.BotToken);
+            {   
+                //return new TelegramBotClient(options.BotToken);
+                return new TelegramBotClient(Environment.GetEnvironmentVariable("TELEGRAM_TOKEN"));
             });
 
             builder.Services.AddSingleton<GoogleSheetsService>();
