@@ -71,6 +71,13 @@ namespace HorseBot
 
             var app = builder.Build();
 
+            using (var scope = app.Services.CreateScope())
+            {
+                var bot = scope.ServiceProvider.GetRequiredService<ITelegramBotClient>();
+                var webhookUrl = builder.Configuration["PUBLIC_URL"];
+                await bot.SetWebhook($"{webhookUrl}/bot/webhook");
+            }
+
             app.MapControllers();
 
             app.Run();
