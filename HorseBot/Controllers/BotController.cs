@@ -28,7 +28,7 @@ public class BotController : ControllerBase
         return $"Webhook set to {webhookUrl}";
     }
 
-    [HttpPost]
+    [HttpPost("webhook")]
     public async Task<IActionResult> Post([FromBody] Update update, CancellationToken ct)
     {
         if (Request.Headers["X-Telegram-Bot-Api-Secret-Token"] != Environment.GetEnvironmentVariable("SECRET_TOKEN"))
