@@ -66,7 +66,7 @@ namespace HorseBot
             });
 
             builder.Services.AddSingleton<GoogleSheetsService>();
-            builder.Services.AddHostedService<BotPollingService>();
+            //builder.Services.AddHostedService<BotPollingService>();
             builder.Services.AddControllers();
 
             var app = builder.Build();
