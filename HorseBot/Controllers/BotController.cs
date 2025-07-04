@@ -8,7 +8,7 @@ using Telegram.Bot.Types;
 namespace HorseBot.Controllers;
 
 [ApiController]
-[Route("[controller]")]
+[Route("bot")]
 public class BotController : ControllerBase
 {   
     private readonly ITelegramBotClient _botClient;
@@ -23,8 +23,8 @@ public class BotController : ControllerBase
     public async Task<string> SetWebHook(CancellationToken ct)
     {
         //var webhookUrl = _botConfig.Value.BotWebhookUrl.AbsoluteUri;
-        var webhookUrl = Environment.GetEnvironmentVariable("PUBLIC_URL");
-        await _botClient.SetWebhook(webhookUrl, allowedUpdates: [], secretToken: Environment.GetEnvironmentVariable("SECRET_TOKEN"), cancellationToken: ct);
+        var webhookUrl = Environment.GetEnvironmentVariable("PUBLIC_URL") + "/bot";
+        await _botClient.SetWebhook(webhookUrl, allowedUpdates: null, secretToken: Environment.GetEnvironmentVariable("SECRET_TOKEN"), cancellationToken: ct);
         return $"Webhook set to {webhookUrl}";
     }
 
