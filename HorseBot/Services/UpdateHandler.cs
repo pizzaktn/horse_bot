@@ -1,5 +1,6 @@
 ﻿using Google.Apis.Sheets.v4;
 using Google.Apis.Sheets.v4.Data;
+using System.Collections.Concurrent;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -14,7 +15,8 @@ public class UpdateHandler : IUpdateHandler
 {   
     private readonly ILogger<UpdateHandler> _logger;
     private readonly GoogleSheetsService _sheetsService;
-    
+    private readonly ConcurrentDictionary<long, (string Student, string Action)> _userStates = new();
+
     public UpdateHandler(ITelegramBotClient bot, ILogger<UpdateHandler> logger, GoogleSheetsService sheetsService)
     {
         _logger = logger;
@@ -30,46 +32,133 @@ public class UpdateHandler : IUpdateHandler
     }
 
     public async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken token)
+    
     {
-        if (update.Type != UpdateType.Message) return;
-        var msg = update.Message;
-        if (msg.Type != MessageType.Text) return;
-
-        var parts = msg.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0) return;
-
-        var command = parts[0].ToLower();
-        var name = parts.Length > 1 ? parts[1] : null;
-
-        switch (command)
+        if (update.Type == UpdateType.Message)
         {
-            case "/add_student":
-                if (name == null) return;
-                await _sheetsService.AddStudentAsync(name);
-                await bot.SendMessage(msg.Chat.Id, $"Ученик {name} добавлен.");
-                break;
-            case "/pay":
-                if (parts.Length < 3 || !int.TryParse(parts[2], out int count)) return;
+            var msg = update.Message;
+            if (msg.Type == MessageType.Text)
+            {
+                if (_userStates.TryGetValue(msg.Chat.Id, out var state))
+                {
+                    if (state.Action == "pay_custom")
+                    {
+                        if (int.TryParse(msg.Text, out int count))
+                        {
+                            await _sheetsService.AddPaymentAsync(state.Student, count);
+                            await bot.SendMessage(msg.Chat.Id, $"Добавлено {count} занятий для {state.Student}.");
+                            _userStates.TryRemove(msg.Chat.Id, out _);
+                        }
+                        else
+                        {
+                            await bot.SendMessage(msg.Chat.Id, "Введите число, например: 5");
+                        }
+                        return;
+                    }
+                    else if (state.Action == "add_student_name")
+                    {
+                        var name = msg.Text.Trim();
+                        if (!string.IsNullOrEmpty(name))
+                        {
+                            await _sheetsService.AddStudentAsync(name);
+                            await bot.SendMessage(msg.Chat.Id, $"Ученик {name} добавлен.");
+                        }
+                        else
+                        {
+                            await bot.SendMessage(msg.Chat.Id, "Имя не может быть пустым. Попробуйте снова.");
+                        }
+                        _userStates.TryRemove(msg.Chat.Id, out _);
+                        return;
+                    }
+                }
+
+                if (msg.Text == "/students")
+                {
+                    var students = await _sheetsService.GetAllStudentNamesAsync();
+
+                    foreach (var name in students)
+                    {
+                        var buttons = new InlineKeyboardMarkup(new[]
+                        {
+                            new []
+                            {
+                                InlineKeyboardButton.WithCallbackData("📥 Оплатить", $"pay_{name}"),
+                                InlineKeyboardButton.WithCallbackData("✅ Посещение", $"attend_{name}"),
+                                InlineKeyboardButton.WithCallbackData("📊 Статус", $"status_{name}")
+                            }
+                        });
+
+                        await bot.SendMessage(msg.Chat.Id, name, replyMarkup: buttons);
+                    }
+                }
+
+                if (msg.Text == "/add_student")
+                {
+                    _userStates[msg.Chat.Id] = (null, "add_student_name");
+                    await bot.SendMessage(msg.Chat.Id, "Введите имя нового ученика:");
+                    return;
+                }
+            }
+        }
+        else if (update.Type == UpdateType.CallbackQuery)
+        {
+            var query = update.CallbackQuery;
+            var data = query.Data;
+
+            if (data.StartsWith("pay_"))
+            {
+                var name = data.Substring(4);
+                var paymentOptions = new InlineKeyboardMarkup(new[]
+                {
+                    new []
+                    {
+                        InlineKeyboardButton.WithCallbackData("1 занятие", $"payval_{name}_1"),
+                        InlineKeyboardButton.WithCallbackData("4 занятия", $"payval_{name}_4"),
+                        InlineKeyboardButton.WithCallbackData("⬆️ Ввести своё", $"paycustom_{name}")
+                    }
+                });
+
+                await bot.AnswerCallbackQuery(query.Id);
+                await bot.SendMessage(query.Message.Chat.Id,
+                    $"Выберите количество занятий для {name}:", replyMarkup: paymentOptions);
+            }
+            else if (data.StartsWith("payval_"))
+            {
+                var parts = data.Split('_');
+                var name = parts[1];
+                var count = int.Parse(parts[2]);
+
                 await _sheetsService.AddPaymentAsync(name, count);
-                await bot.SendMessage(msg.Chat.Id, $"Добавлено {count} занятий для {name}.");
-                break;
-            case "/attend":
-                if (name == null) return;
+                await bot.AnswerCallbackQuery(query.Id);
+                await bot.SendMessage(query.Message.Chat.Id,
+                    $"Добавлено {count} занятий для {name}.");
+            }
+            else if (data.StartsWith("paycustom_"))
+            {
+                var name = data.Substring("paycustom_".Length);
+                _userStates[query.Message.Chat.Id] = (name, "pay_custom");
+
+                await bot.AnswerCallbackQuery(query.Id);
+                await bot.SendMessage(query.Message.Chat.Id,
+                    $"Введите количество занятий для {name}:");
+            }
+            else if (data.StartsWith("attend_"))
+            {
+                var name = data.Substring(7);
                 var success = await _sheetsService.RegisterAttendanceAsync(name);
-                var message = success
-                    ? $"Посещение для {name} зарегистрировано, занятие вычтено."
+                var msg = success
+                    ? $"Посещение для {name} зарегистрировано."
                     : $"У {name} нет оплаченных занятий!";
-                await bot.SendMessage(msg.Chat.Id, message);
-                break;
-            case "/status":
-                if (name == null) return;
+                await bot.AnswerCallbackQuery(query.Id);
+                await bot.SendMessage(query.Message.Chat.Id, msg);
+            }
+            else if (data.StartsWith("status_"))
+            {
+                var name = data.Substring(7);
                 var status = await _sheetsService.GetStatusAsync(name);
-                await bot.SendMessage(msg.Chat.Id, status);
-                break;
-            case "/students":
-                var list = await _sheetsService.GetAllStudentsAsync();
-                await bot.SendMessage(msg.Chat.Id, list);
-                break;
+                await bot.AnswerCallbackQuery(query.Id);
+                await bot.SendMessage(query.Message.Chat.Id, status);
+            }
         }
     }
 

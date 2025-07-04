@@ -146,6 +146,16 @@ namespace HorseBot.Services
             return result;
         }
 
+        public async Task<List<string>> GetAllStudentNamesAsync()
+        {
+            var response = await _sheetsService.Spreadsheets.Values.Get(_spreadsheetId, "Students!A:A").ExecuteAsync();
+            return response.Values?
+                .Skip(1)
+                .Where(r => r.Count > 0)
+                .Select(r => r[0].ToString())
+                .ToList() ?? new List<string>();
+        }
+
 
         #region Old methods
         public async Task AddStudentAsync(string name, long telegramId)
